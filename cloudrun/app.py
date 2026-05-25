@@ -202,7 +202,7 @@ def scan():
     log.info("Scan started for org %s", ORG_ID)
     scanned_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    raw_pmap = run_gcloud(["projects", "list", "--format=json(projectNumber,projectId)"])
+    raw_pmap = run_gcloud(["projects", "list", "--filter=lifecycleState:ACTIVE", "--format=json(projectNumber,projectId)"])
     pmap_list = json.loads(raw_pmap) if raw_pmap else []
     pmap = {str(p.get("projectNumber", "")): p.get("projectId", "") for p in pmap_list}
     total_projects = len(pmap_list)
@@ -309,20 +309,20 @@ def created_cell(f: dict) -> str:
 
 
 def findings_row(f: dict) -> str:
-    icon = GEMINI_ICON if f.get("gemini_scoped") else ""
     expires = f.get("expires", "")
     expires_str = expires[:10] if expires else "\u2014"
     targets = f.get("api_targets", [])
+    gemini_icon = GEMINI_ICON if f.get("gemini_scoped") else ""
     if targets:
-        apis_cell = f'<span class="apis-badge">{len(targets)}</span>'
-        apis_detail = ", ".join(targets)
+        apis_cell = f'{gemini_icon}<span class="apis-badge">{len(targets)}</span>'
+        apis_detail = "".join(f'<span class="api-pill">{t}</span>' for t in targets)
     else:
         apis_cell = '<span class="apis-unrestricted">All APIs</span>'
         apis_detail = "No API restrictions \u2014 key has access to all enabled APIs."
     return (
         f'<tr class="data-row" onclick="toggleApis(this)">'
         f'<td class="col-project">{f["project"]}</td>'
-        f'<td class="col-name">{f["key_name"]}{icon}</td>'
+        f'<td class="col-name">{f["key_name"]}</td>'
         f'<td class="col-created">{created_cell(f)}</td>'
         f'<td class="col-expires">{expires_str}</td>'
         f'<td class="col-restriction">{f["app_restriction"]}</td>'
@@ -447,8 +447,9 @@ td{{padding:9px 16px;border-bottom:1px solid var(--border);vertical-align:middle
 tr.data-row{{cursor:pointer}}tr.data-row:hover td{{background:var(--bg)}}
 tr.apis-row td{{padding:0;border-bottom:1px solid var(--border);white-space:normal}}
 tr:last-child td{{border-bottom:none}}
-.apis-list{{padding:10px 16px;font-size:12px;color:var(--muted);line-height:1.7;word-break:break-all}}
-.apis-badge{{display:inline-block;font-size:11px;font-weight:500;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:1px 8px}}
+.apis-list{{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px}}
+.api-pill{{display:inline-block;font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--muted)}}
+.apis-badge{{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:1px 8px}}
 .apis-unrestricted{{font-size:12px;color:var(--muted)}}
 .badge-pre{{display:inline-block;font-size:10px;font-weight:500;background:var(--pre-bg);color:var(--pre-color);border:1px solid var(--pre-color);border-radius:4px;padding:1px 6px}}
 .empty{{padding:18px;color:var(--muted);font-size:13px}}
@@ -466,7 +467,7 @@ footer{{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-
   </div>
 </header>
 <main>{error_banner}{body}</main>
-<footer>AIzkaban &nbsp;\u00b7&nbsp; API Key Auditor &nbsp;\u00b7&nbsp; {footer_time}</footer>
+<footer>AIzkaban &nbsp;\u00b7&nbsp; API Key Auditor &nbsp;\u00b7&nbsp; <time id="scanTime" data-utc="{footer_time}">{footer_time}</time></footer>
 <script>
 let polling=null;
 function toggleApis(row){{const n=row.nextElementSibling;if(n&&n.classList.contains('apis-row'))n.style.display=n.style.display==='none'?'table-row':'none';}}
@@ -489,6 +490,8 @@ document.querySelectorAll('table').forEach(table=>{{
   }});
 }});
 {polling_js}
+const t=document.getElementById('scanTime');
+if(t){{const d=new Date(t.dataset.utc);if(!isNaN(d))t.textContent=d.toLocaleString(undefined,{{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}});}}
 </script>
 </body>
 </html>"""
