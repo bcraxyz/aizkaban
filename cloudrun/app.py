@@ -204,22 +204,22 @@ def scan():
     scanned_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     raw_pmap = run_gcloud([
-        "asset", "search-all-resources",
-        f"--scope=organizations/{ORG_ID}",
+        "asset", "list",
+        f"--organization={ORG_ID}",
         "--asset-types=cloudresourcemanager.googleapis.com/Project",
-        "--query=state:ACTIVE",
-        "--format=json(name,additionalAttributes)",
+        "--content-type=resource",
+        "--format=json",
     ])
     pmap_list = json.loads(raw_pmap) if raw_pmap else []
-    # name format: //cloudresourcemanager.googleapis.com/projects/{PROJECT_ID}
-    # additionalAttributes.projectNumber is the numeric ID used in API key asset paths
-    # Build pmap keyed by project number -> project ID
+    # resource.data.projectNumber -> resource.data.projectId
     pmap = {}
     for p in pmap_list:
-        project_id = p.get("name", "").split("/")[-1]
-        attrs = p.get("additionalAttributes", {})
-        project_number = str(attrs.get("projectNumber", ""))
-        if project_id and project_number:
+        d = p.get("resource", {}).get("data", {})
+        project_id = d.get("projectId", "")
+        raw_num = str(d.get("projectNumber", ""))
+        project_number = raw_num.split("/")[-1]  # handles int, "123456", or "projects/123456"
+        lifecycle = d.get("lifecycleState", "")
+        if project_id and project_number and lifecycle == "ACTIVE":
             pmap[project_number] = project_id
     total_projects = len(pmap)
 
