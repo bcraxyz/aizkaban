@@ -345,12 +345,13 @@ def render_dashboard(data: dict | None, scan_running: bool, scan_error: str | No
     if data is None:
         if scan_running:
             body = '<div class="no-data"><p>Scan in progress…</p></div>'
-            meta_str = "Scanning…"
         else:
             body = '<div class="no-data"><p>No scan data. Click <strong>Refresh</strong> to run the first scan.</p></div>'
-            meta_str = "No data yet"
+        org_str = f"Org: {ORG_ID}"
+        footer_time = "—"
     else:
-        meta_str = f"Org: {data['org_id']} &nbsp;·&nbsp; {data['scanned_at']}"
+        org_str = f"Org: {data['org_id']}"
+        footer_time = data['scanned_at']
         cols = ["Project", "Key Name", "UID", "Created", "App Restriction"]
         findings = data["findings"]
 
@@ -389,13 +390,21 @@ def render_dashboard(data: dict | None, scan_running: bool, scan_error: str | No
 
         stats = (
             f'<div class="stat-bar">'
-            f'<div class="stat"><div class="stat-value">{data["total_projects"]}</div><div class="stat-label">Projects</div></div>'
+            f'<div class="stat-group">'
+            f'<div class="stat-group-label">Projects</div>'
+            f'<div class="stat-cells">'
+            f'<div class="stat"><div class="stat-value">{data["total_projects"]}</div><div class="stat-label">Total</div></div>'
             f'<div class="stat"><div class="stat-value">{data["gemini_count"]}</div><div class="stat-label">Gemini Enabled</div></div>'
-            f'<div class="stat"><div class="stat-value">{data["total_keys"]}</div><div class="stat-label">API Keys</div></div>'
+            f'</div></div>'
+            f'<div class="stat-group">'
+            f'<div class="stat-group-label">API Keys</div>'
+            f'<div class="stat-cells">'
+            f'<div class="stat"><div class="stat-value">{data["total_keys"]}</div><div class="stat-label">Total</div></div>'
             f'<div class="stat critical"><div class="stat-value">{data["critical_count"]}</div><div class="stat-label">Critical</div></div>'
             f'<div class="stat high"><div class="stat-value">{data["high_count"]}</div><div class="stat-label">High</div></div>'
             f'<div class="stat low"><div class="stat-value">{data["low_count"]}</div><div class="stat-label">Low</div></div>'
             f'<div class="stat info"><div class="stat-value">{data["info_count"]}</div><div class="stat-label">Clean</div></div>'
+            f'</div></div>'
             f'</div>'
         )
         body = (
@@ -464,7 +473,6 @@ header {{
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
 }}
 .logo {{ font-size: 20px; font-weight: 600; letter-spacing: -0.4px; }}
-.logo span {{ color: var(--muted); font-weight: 300; }}
 .header-right {{ margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }}
 .scan-meta {{ font-size: 12px; color: var(--muted); }}
 .spinner {{
@@ -490,13 +498,26 @@ main {{ max-width: 1100px; margin: 0 auto; padding: 28px 40px 60px; }}
   padding: 10px 16px; margin-bottom: 20px; font-size: 13px;
 }}
 .stat-bar {{
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px; margin-bottom: 32px;
+  display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap;
 }}
-.stat {{
+.stat-group {{
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px 18px;
+  border-radius: var(--radius); display: flex; overflow: hidden; flex: 1; min-width: 280px;
 }}
+.stat-group-label {{
+  writing-mode: vertical-rl; text-orientation: mixed;
+  font-size: 10px; font-weight: 500; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--muted);
+  padding: 12px 8px; border-right: 1px solid var(--border);
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+}}
+.stat-cells {{ display: flex; flex: 1; }}
+.stat {{
+  flex: 1; padding: 14px 16px;
+  border-right: 1px solid var(--border);
+}}
+.stat:last-child {{ border-right: none; }}
 .stat-value {{ font-size: 28px; font-weight: 600; line-height: 1; margin-bottom: 4px; }}
 .stat-label {{ font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }}
 .stat.critical .stat-value {{ color: var(--critical); }}
@@ -561,9 +582,9 @@ footer {{
 </head>
 <body>
 <header>
-  <div class="logo">aizkaban <span>/ Gemini Key Auditor</span></div>
+  <div class="logo">aizkaban</div>
   <div class="header-right">
-    <span class="scan-meta" id="meta">{meta_str}</span>
+    <span class="scan-meta" id="meta">{org_str}</span>
     <div class="spinner" id="spinner"></div>
     <button class="btn" id="refreshBtn" onclick="startRefresh()">Refresh</button>
   </div>
@@ -571,7 +592,7 @@ footer {{
 <main>
 {error_banner}{body}
 </main>
-<footer>aizkaban &nbsp;·&nbsp; Point-in-time audit</footer>
+<footer>aizkaban &nbsp;·&nbsp; API Key Auditor &nbsp;·&nbsp; {footer_time}</footer>
 <script>
 {"let polling = null;" if not scan_running else "document.addEventListener('DOMContentLoaded', () => startPolling());"}
 
@@ -584,7 +605,7 @@ function startRefresh() {{
         startPolling();
       }}
     }})
-    .catch(() => setMeta('Error — try again'));
+    .catch(() => document.getElementById('meta').textContent = 'Error — try again');
 }}
 
 function startPolling() {{
@@ -608,10 +629,6 @@ function setScanning(on) {{
   btn.disabled = on;
   btn.textContent = on ? 'Scanning…' : 'Refresh';
   sp.style.display = on ? 'block' : 'none';
-}}
-
-function setMeta(text) {{
-  document.getElementById('meta').textContent = text;
 }}
 
 {"startPolling();" if scan_running else ""}
