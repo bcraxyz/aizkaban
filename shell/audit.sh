@@ -62,7 +62,7 @@ PROJECT_MAP=$(gcloud asset search-all-resources \
   --scope="organizations/$ORG_ID" \
   --asset-types="cloudresourcemanager.googleapis.com/Project" \
   --query="state:ACTIVE" \
-  --format="json(name,displayName)" 2>/dev/null)
+  --format="json(name,additionalAttributes)" 2>/dev/null)
 [ -z "$PROJECT_MAP" ] && PROJECT_MAP="[]"
 
 echo "Querying projects with Gemini API enabled..."
@@ -82,7 +82,7 @@ echo "Analyzing..."
 # ── Classify findings (exclude deleted keys) ───────────────────────────────────
 
 FINDINGS=$(echo "$KEYS_JSON" | jq -c   --argjson pmap "$PROJECT_MAP"   --argjson gemini_set "$GEMINI_SET"   --arg cutoff "$PRE_GEMINI_CUTOFF" '
-  ($pmap | map({(.name | split("/")[-1]): .displayName}) | add // {}) as $dict |
+  ($pmap | map({((.additionalAttributes.projectNumber // 0) | tostring): (.name | split("/")[-1])}) | add // {}) as $dict |
   ($gemini_set | map({(.): true}) | add // {}) as $gset |
   [
     .[] |
