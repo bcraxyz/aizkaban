@@ -203,10 +203,21 @@ def scan():
     log.info("Scan started for org %s", ORG_ID)
     scanned_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    raw_pmap = run_gcloud(["projects", "list", "--filter=lifecycleState:ACTIVE", "--format=json(projectNumber,projectId)"])
+    raw_pmap = run_gcloud([
+        "asset", "search-all-resources",
+        f"--scope=organizations/{ORG_ID}",
+        "--asset-types=cloudresourcemanager.googleapis.com/Project",
+        "--query=state:ACTIVE",
+        "--format=json(name,displayName)",
+    ])
     pmap_list = json.loads(raw_pmap) if raw_pmap else []
-    pmap = {str(p.get("projectNumber", "")): p.get("projectId", "") for p in pmap_list}
-    total_projects = len(pmap_list)
+    # name format: //cloudresourcemanager.googleapis.com/projects/123456
+    # displayName is the project ID
+    pmap = {
+        p["name"].split("/")[-1]: p.get("displayName", p["name"].split("/")[-1])
+        for p in pmap_list if p.get("name")
+    }
+    total_projects = len(pmap)
 
     gemini_raw = run_gcloud([
         "asset", "search-all-resources",
