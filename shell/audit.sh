@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# aizkaban — Gemini API Key Auditor
+# aizkaban — API Key Auditor
 # Scans a GCP organization for API keys that may expose the Gemini API.
 #
 # PREREQUISITES:
@@ -28,8 +28,8 @@ if ! command -v jq &>/dev/null; then
   exit 1
 fi
 
-echo "aizkaban — Gemini API Key Auditor"
-echo "=================================="
+echo "aizkaban — API Key Auditor"
+echo "=========================="
 
 CAI_CHECK=$(gcloud services list --enabled \
   --filter="config.name:cloudasset.googleapis.com" \
@@ -115,6 +115,7 @@ FINDINGS=$(echo "$KEYS_JSON" | jq -r \
     {
       severity:        $severity,
       project:         $pid,
+      project_num:     $pnum,
       name:            ($d.displayName // "unnamed"),
       uid:             ($d.uid // ""),
       created:         ($d.createTime // ""),
@@ -137,23 +138,30 @@ FINDINGS=$(echo "$KEYS_JSON" | jq -r \
   )
 ')
 
-# Clean Gemini-enabled projects (all keys restricted — info)
-CLEAN_PROJECTS=$(echo "$KEYS_JSON" | jq -r \
+# ── Clean projects: Gemini enabled + no critical or low findings ───────────────
+# A project is clean only if Gemini is enabled AND it has zero critical/low keys.
+# High keys (unrestricted, Gemini off) don't affect clean status since Gemini isn't on.
+
+DIRTY_PNUMS=$(echo "$FINDINGS" | jq -r '
+  [.[] | select(.severity == "critical" or .severity == "low") | .project_num] | unique | .[]
+')
+
+DIRTY_SET="[]"
+if [ -n "$DIRTY_PNUMS" ]; then
+  DIRTY_SET=$(echo "$DIRTY_PNUMS" | jq -R . | jq -s .)
+fi
+
+CLEAN_PROJECTS=$(echo "$GEMINI_SET" | jq -r \
   --argjson pmap "$PROJECT_MAP" \
-  --argjson gemini_set "$GEMINI_SET" '
+  --argjson dirty "$DIRTY_SET" '
   ($pmap | map({(.projectNumber): .projectId}) | add // {}) as $dict |
-  ($gemini_set | map({(.): true}) | add // {}) as $gset |
+  ($dirty | map({(.): true}) | add // {}) as $dset |
   [
     .[] |
-    (.name | split("/")[4]) as $pnum |
-    ($gset[$pnum] // false) as $gemini_on |
-    .resource.data as $d |
-    ($d.restrictions.apiTargets // null) as $targets |
-    select($gemini_on and $targets != null) |
-    select(($targets | map(.service) | any(. == "generativelanguage.googleapis.com")) | not) |
-    ($dict[$pnum] // $pnum)
-  ] | unique
-')
+    select(. as $pnum | $dset[$pnum] | not) |
+    ($dict[.] // .)
+  ] | sort | .[]
+' | jq -R . | jq -s .)
 
 # ── Summary counts ─────────────────────────────────────────────────────────────
 
@@ -183,17 +191,28 @@ make_rows() {
 
 make_table() {
   local rows="$1"
+  local info_card="${2:-false}"
   if [ -z "$rows" ]; then
     echo '<p class="empty">No findings in this category.</p>'
     return
   fi
-  cat <<TABLE
+  if [ "$info_card" = "true" ]; then
+    cat <<TABLE
+<div class="table-wrap"><table>
+<thead><tr><th>Project</th></tr></thead>
+<tbody>
+$rows
+</tbody></table></div>
+TABLE
+  else
+    cat <<TABLE
 <div class="table-wrap"><table>
 <thead><tr><th>Project</th><th>Key Name</th><th>UID</th><th>Created</th><th>App Restriction</th></tr></thead>
 <tbody>
 $rows
 </tbody></table></div>
 TABLE
+  fi
 }
 
 CRITICAL_ROWS=$(make_rows "critical")
@@ -204,7 +223,14 @@ INFO_ROWS=$(echo "$CLEAN_PROJECTS" | jq -r '.[] | "<tr><td>" + . + "</td></tr>"'
 CRITICAL_TABLE=$(make_table "$CRITICAL_ROWS")
 HIGH_TABLE=$(make_table "$HIGH_ROWS")
 LOW_TABLE=$(make_table "$LOW_ROWS")
-INFO_TABLE=$(make_table "$INFO_ROWS")
+INFO_TABLE=$(make_table "$INFO_ROWS" "true")
+
+# Pluralise
+pluralise() { [ "$1" = "1" ] && echo "$2" || echo "$3"; }
+CRITICAL_LABEL=$(pluralise "$CRITICAL_COUNT" "key" "keys")
+HIGH_LABEL=$(pluralise "$HIGH_COUNT" "key" "keys")
+LOW_LABEL=$(pluralise "$LOW_COUNT" "key" "keys")
+INFO_LABEL=$(pluralise "$INFO_COUNT" "project" "projects")
 
 # ── Write HTML report ──────────────────────────────────────────────────────────
 
@@ -257,29 +283,43 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 header {
-  padding: 24px 40px;
+  padding: 20px 40px;
   border-bottom: 1px solid var(--border);
-  display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 16px;
 }
 .logo { font-size: 20px; font-weight: 600; letter-spacing: -0.4px; }
-.logo span { color: var(--muted); font-weight: 300; }
-.scan-meta { font-size: 12px; color: var(--muted); margin-left: auto; }
+.org-id { font-size: 12px; color: var(--muted); margin-left: auto; }
 main { max-width: 1100px; margin: 0 auto; padding: 28px 40px 60px; }
+
+/* Two-group summary bar */
 .stat-bar {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px; margin-bottom: 32px;
+  display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap;
 }
-.stat {
+.stat-group {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px 18px;
+  border-radius: var(--radius); display: flex; overflow: hidden; flex: 1; min-width: 280px;
 }
-.stat-value { font-size: 28px; font-weight: 600; line-height: 1; margin-bottom: 4px; }
+.stat-group-label {
+  writing-mode: vertical-rl; text-orientation: mixed;
+  font-size: 10px; font-weight: 500; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--muted);
+  padding: 12px 8px; border-right: 1px solid var(--border);
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+}
+.stat-cells { display: flex; flex: 1; }
+.stat {
+  flex: 1; padding: 14px 16px;
+  border-right: 1px solid var(--border);
+}
+.stat:last-child { border-right: none; }
+.stat-value { font-size: 26px; font-weight: 600; line-height: 1; margin-bottom: 3px; }
 .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .stat.critical .stat-value { color: var(--critical); }
 .stat.high     .stat-value { color: var(--high); }
 .stat.low      .stat-value { color: var(--low); }
 .stat.info     .stat-value { color: var(--info); }
+
 .card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); margin-bottom: 16px; overflow: hidden;
@@ -339,18 +379,29 @@ footer {
 </head>
 <body>
 <header>
-  <div class="logo">aizkaban <span>/ Gemini Key Auditor</span></div>
-  <div class="scan-meta">Org: $ORG_ID &nbsp;·&nbsp; $SCAN_TIME</div>
+  <div class="logo">aizkaban</div>
+  <div class="org-id">Org: $ORG_ID</div>
 </header>
 <main>
+
   <div class="stat-bar">
-    <div class="stat"><div class="stat-value">$TOTAL_PROJECTS</div><div class="stat-label">Projects</div></div>
-    <div class="stat"><div class="stat-value">$GEMINI_COUNT</div><div class="stat-label">Gemini Enabled</div></div>
-    <div class="stat"><div class="stat-value">$TOTAL_KEYS</div><div class="stat-label">API Keys</div></div>
-    <div class="stat critical"><div class="stat-value">$CRITICAL_COUNT</div><div class="stat-label">Critical</div></div>
-    <div class="stat high"><div class="stat-value">$HIGH_COUNT</div><div class="stat-label">High</div></div>
-    <div class="stat low"><div class="stat-value">$LOW_COUNT</div><div class="stat-label">Low</div></div>
-    <div class="stat info"><div class="stat-value">$INFO_COUNT</div><div class="stat-label">Clean</div></div>
+    <div class="stat-group">
+      <div class="stat-group-label">Projects</div>
+      <div class="stat-cells">
+        <div class="stat"><div class="stat-value">$TOTAL_PROJECTS</div><div class="stat-label">Total</div></div>
+        <div class="stat"><div class="stat-value">$GEMINI_COUNT</div><div class="stat-label">Gemini Enabled</div></div>
+      </div>
+    </div>
+    <div class="stat-group">
+      <div class="stat-group-label">API Keys</div>
+      <div class="stat-cells">
+        <div class="stat"><div class="stat-value">$TOTAL_KEYS</div><div class="stat-label">Total</div></div>
+        <div class="stat critical"><div class="stat-value">$CRITICAL_COUNT</div><div class="stat-label">Critical</div></div>
+        <div class="stat high"><div class="stat-value">$HIGH_COUNT</div><div class="stat-label">High</div></div>
+        <div class="stat low"><div class="stat-value">$LOW_COUNT</div><div class="stat-label">Low</div></div>
+        <div class="stat info"><div class="stat-value">$INFO_COUNT</div><div class="stat-label">Clean</div></div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -358,7 +409,7 @@ footer {
       <span class="dot critical"></span>
       <span class="card-title">Critical</span>
       <span class="card-desc">— Unrestricted key, Gemini enabled</span>
-      <span class="card-count">$CRITICAL_COUNT keys</span>
+      <span class="card-count">$CRITICAL_COUNT $CRITICAL_LABEL</span>
     </div>
     $CRITICAL_TABLE
   </div>
@@ -368,7 +419,7 @@ footer {
       <span class="dot high"></span>
       <span class="card-title">High</span>
       <span class="card-desc">— Unrestricted key, Gemini not enabled (latent)</span>
-      <span class="card-count">$HIGH_COUNT keys</span>
+      <span class="card-count">$HIGH_COUNT $HIGH_LABEL</span>
     </div>
     $HIGH_TABLE
   </div>
@@ -378,7 +429,7 @@ footer {
       <span class="dot low"></span>
       <span class="card-title">Low</span>
       <span class="card-desc">— Explicitly Gemini-scoped key, Gemini enabled</span>
-      <span class="card-count">$LOW_COUNT keys</span>
+      <span class="card-count">$LOW_COUNT $LOW_LABEL</span>
     </div>
     $LOW_TABLE
   </div>
@@ -388,12 +439,14 @@ footer {
       <span class="dot info"></span>
       <span class="card-title">Info</span>
       <span class="card-desc">— Gemini enabled, all keys properly restricted</span>
-      <span class="card-count">$INFO_COUNT projects</span>
+      <span class="card-count">$INFO_COUNT $INFO_LABEL</span>
     </div>
     $INFO_TABLE
   </div>
+
 </main>
-<footer>aizkaban &nbsp;·&nbsp; Point-in-time audit &nbsp;·&nbsp; $SCAN_TIME</footer>
+<footer>aizkaban &nbsp;·&nbsp; API Key Auditor &nbsp;·&nbsp; $SCAN_TIME</footer>
+
 <script>
 document.querySelectorAll('table').forEach(table => {
   table.querySelectorAll('th').forEach((th, col) => {
