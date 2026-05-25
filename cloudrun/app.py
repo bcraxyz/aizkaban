@@ -40,8 +40,9 @@ def _init_db(conn: sqlite3.Connection):
             id             INTEGER PRIMARY KEY CHECK (id = 1),
             scanned_at     TEXT NOT NULL,
             org_id         TEXT NOT NULL,
-            total_projects INTEGER DEFAULT 0,
-            gemini_count   INTEGER DEFAULT 0,
+            total_projects          INTEGER DEFAULT 0,
+            projects_with_findings  INTEGER DEFAULT 0,
+            gemini_count            INTEGER DEFAULT 0,
             total_keys     INTEGER DEFAULT 0,
             critical_count INTEGER DEFAULT 0,
             high_count     INTEGER DEFAULT 0,
@@ -70,12 +71,12 @@ def db_store(meta: dict, findings: list):
         conn.execute("DELETE FROM findings")
         conn.execute("""
             INSERT INTO snapshot
-              (id, scanned_at, org_id, total_projects, gemini_count, total_keys,
+              (id, scanned_at, org_id, total_projects, projects_with_findings, gemini_count, total_keys,
                critical_count, high_count, low_count, info_count)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             meta["scanned_at"], meta["org_id"],
-            meta["total_projects"], meta["gemini_count"], meta["total_keys"],
+            meta["total_projects"], meta["projects_with_findings"], meta["gemini_count"], meta["total_keys"],
             meta["critical_count"], meta["high_count"], meta["low_count"], meta["info_count"],
         ))
         for f in findings:
@@ -200,7 +201,7 @@ def classify_key(key_data: dict, gemini_set: set, pmap: dict) -> dict | None:
 
 def scan():
     log.info("Scan started for org %s", ORG_ID)
-    scanned_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    scanned_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     raw_pmap = run_gcloud(["projects", "list", "--filter=lifecycleState:ACTIVE", "--format=json(projectNumber,projectId)"])
     pmap_list = json.loads(raw_pmap) if raw_pmap else []
@@ -246,10 +247,13 @@ def scan():
     low_count      = sum(1 for f in findings if f["severity"] == "low")
     info_count     = sum(1 for f in findings if f["severity"] == "info")
 
+    projects_with_findings = len({f['project'] for f in findings if f['severity'] in ('critical','high','low')})
+
     meta = {
         "scanned_at": scanned_at,
         "org_id": ORG_ID,
         "total_projects": total_projects,
+        "projects_with_findings": projects_with_findings,
         "gemini_count": gemini_count,
         "total_keys": total_keys,
         "critical_count": critical_count,
@@ -314,7 +318,7 @@ def findings_row(f: dict) -> str:
     targets = f.get("api_targets", [])
     gemini_icon = GEMINI_ICON if f.get("gemini_scoped") else ""
     if targets:
-        apis_cell = f'{gemini_icon}<span class="apis-badge">{len(targets)}</span>'
+        apis_cell = f'<span class="apis-badge">{len(targets)}</span>{gemini_icon}'
         apis_detail = "".join(f'<span class="api-pill">{t}</span>' for t in targets)
     else:
         apis_cell = '<span class="apis-unrestricted">All APIs</span>'
@@ -375,6 +379,7 @@ def render_dashboard(data: dict | None, scan_running: bool, scan_error: str | No
             f'<div class="stat-group"><div class="stat-group-label">Projects</div>'
             f'<div class="stat-cells">'
             f'<div class="stat"><div class="stat-value">{data["total_projects"]}</div><div class="stat-label">Total</div></div>'
+            f'<div class="stat critical"><div class="stat-value">{data["projects_with_findings"]}</div><div class="stat-label">Findings</div></div>'
             f'<div class="stat"><div class="stat-value">{data["gemini_count"]}</div><div class="stat-label">Gemini Enabled</div></div>'
             f'</div></div>'
             f'<div class="stat-group"><div class="stat-group-label">API Keys</div>'
