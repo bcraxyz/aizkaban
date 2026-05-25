@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-SCAN_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+SCAN_TIME=$(date "+%Y-%m-%d %H:%M:%S %Z")
 REPORT_FILE="aizkaban-$(date -u +%Y%m%d-%H%M%S).html"
 PRE_GEMINI_CUTOFF="2023-03-01T00:00:00Z"
 FAVICON_B64="PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiMxYTFhMTgiLz4KICA8IS0tIEdlbWluaS1zdHlsZSBzdGFyIG1hcmsgaW4gd2hpdGUgLS0+CiAgPHBhdGggZD0iTTMyIDEwIEMzMiAxMCAyNiAyNiAxMCAzMiBDMjYgMzggMzIgNTQgMzIgNTQgQzMyIDU0IDM4IDM4IDU0IDMyIEMzOCAyNiAzMiAxMCAzMiAxMCBaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4K"
@@ -58,7 +58,7 @@ echo ""
 # ── Data collection ────────────────────────────────────────────────────────────
 
 echo "Building project map..."
-PROJECT_MAP=$(gcloud projects list --format="json(projectNumber,projectId)" 2>/dev/null)
+PROJECT_MAP=$(gcloud projects list --filter="lifecycleState:ACTIVE" --format="json(projectNumber,projectId)" 2>/dev/null)
 [ -z "$PROJECT_MAP" ] && PROJECT_MAP="[]"
 
 echo "Querying projects with Gemini API enabled..."
@@ -153,14 +153,14 @@ make_rows() {
     .[] | select(.severity == $sev) |
     "<tr onclick=\"toggleApis(this)\">" +
     "<td class=\"col-project\">" + .project + "</td>" +
-    "<td class=\"col-name\">" + .name + (if .gemini_scoped then $icon else "" end) + "</td>" +
+    "<td class=\"col-name\">" + .name + "</td>" +
     "<td class=\"col-created\">" + (if .pre_gemini then "<span class=\"badge-pre\">Pre-Gemini</span>" elif .created != "" then .created[0:10] else "—" end) + "</td>" +
     "<td class=\"col-expires\">" + (if .expires != "" then .expires[0:10] else "—" end) + "</td>" +
     "<td class=\"col-restriction\">" + .app_restriction + "</td>" +
     "<td class=\"col-apis\">" +
       (if .api_targets | length == 0
        then "<span class=\"apis-unrestricted\">All APIs</span>"
-       else "<span class=\"apis-badge\">" + (.api_targets | length | tostring) + "</span>"
+       else (if .gemini_scoped then $icon else "" end) + "<span class=\"apis-badge\">" + (.api_targets | length | tostring) + "</span>"
        end) +
     "</td>" +
     "</tr>" +
@@ -168,7 +168,7 @@ make_rows() {
     "<td colspan=\"6\"><div class=\"apis-list\">" +
       (if .api_targets | length == 0
        then "No API restrictions — key has access to all enabled APIs."
-       else (.api_targets | join(", "))
+       else (.api_targets | map("<span class=\"api-pill\">" + . + "</span>") | join(""))
        end) +
     "</div></td>" +
     "</tr>"
@@ -270,8 +270,9 @@ tbody tr.data-row{cursor:pointer}
 tbody tr.data-row:hover td{background:var(--bg)}
 tr.apis-row td{padding:0;border-bottom:1px solid var(--border);white-space:normal}
 tr:last-child td{border-bottom:none}
-.apis-list{padding:10px 16px;font-size:12px;color:var(--muted);line-height:1.7;word-break:break-all}
 .apis-badge{display:inline-block;font-size:11px;font-weight:500;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:1px 8px;cursor:pointer}
+.apis-list{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px}
+.api-pill{display:inline-block;font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--muted)}
 .apis-unrestricted{font-size:12px;color:var(--muted)}
 .badge-pre{display:inline-block;font-size:10px;font-weight:500;background:var(--pre-bg);color:var(--pre-color);border:1px solid var(--pre-color);border-radius:4px;padding:1px 6px}
 .empty{padding:18px;color:var(--muted);font-size:13px}
