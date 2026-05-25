@@ -58,11 +58,11 @@ echo ""
 # ── Data collection ────────────────────────────────────────────────────────────
 
 echo "Building project map (org-scoped)..."
-PROJECT_MAP=$(gcloud asset search-all-resources \
-  --scope="organizations/$ORG_ID" \
+PROJECT_MAP=$(gcloud asset list \
+  --organization="$ORG_ID" \
   --asset-types="cloudresourcemanager.googleapis.com/Project" \
-  --query="state:ACTIVE" \
-  --format="json(name,additionalAttributes)" 2>/dev/null)
+  --content-type=resource \
+  --format="json" 2>/dev/null)
 [ -z "$PROJECT_MAP" ] && PROJECT_MAP="[]"
 
 echo "Querying projects with Gemini API enabled..."
@@ -82,7 +82,7 @@ echo "Analyzing..."
 # ── Classify findings (exclude deleted keys) ───────────────────────────────────
 
 FINDINGS=$(echo "$KEYS_JSON" | jq -c   --argjson pmap "$PROJECT_MAP"   --argjson gemini_set "$GEMINI_SET"   --arg cutoff "$PRE_GEMINI_CUTOFF" '
-  ($pmap | map({((.additionalAttributes.projectNumber // 0) | tostring): (.name | split("/")[-1])}) | add // {}) as $dict |
+  ($pmap | map(select(.resource.data.lifecycleState == "ACTIVE") | {(.resource.data.projectNumber | tostring | split("/") | last): .resource.data.projectId}) | add // {}) as $dict |
   ($gemini_set | map({(.): true}) | add // {}) as $gset |
   [
     .[] |
@@ -144,7 +144,7 @@ PROJECTS_WITH_FINDINGS=$(echo "$FINDINGS" | jq '
 
 # ── Summary counts ─────────────────────────────────────────────────────────────
 
-TOTAL_PROJECTS=$(echo "$PROJECT_MAP" | jq 'length')
+TOTAL_PROJECTS=$(echo "$PROJECT_MAP" | jq '[.[] | select(.resource.data.lifecycleState == "ACTIVE")] | length')
 GEMINI_COUNT=$(echo "$GEMINI_SET" | jq 'length')
 TOTAL_KEYS=$(echo "$FINDINGS" | jq 'length')
 CRITICAL_COUNT=$(echo "$FINDINGS" | jq '[.[] | select(.severity=="critical")] | length')
