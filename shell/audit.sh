@@ -133,6 +133,11 @@ FINDINGS=$(echo "$KEYS_JSON" | jq -c   --argjson pmap "$PROJECT_MAP"   --argjson
   )
 ')
 
+# ── Projects with findings ────────────────────────────────────────────────────────
+PROJECTS_WITH_FINDINGS=$(echo "$FINDINGS" | jq '
+  [.[] | select(.severity == "critical" or .severity == "high" or .severity == "low") | .project] | unique | length
+')
+
 # ── Summary counts ─────────────────────────────────────────────────────────────
 
 TOTAL_PROJECTS=$(echo "$PROJECT_MAP" | jq 'length')
@@ -160,7 +165,7 @@ make_rows() {
     "<td class=\"col-apis\">" +
       (if .api_targets | length == 0
        then "<span class=\"apis-unrestricted\">All APIs</span>"
-       else (if .gemini_scoped then $icon else "" end) + "<span class=\"apis-badge\">" + (.api_targets | length | tostring) + "</span>"
+       else "<span class=\"apis-badge\">" + (.api_targets | length | tostring) + "</span>" + (if .gemini_scoped then $icon else "" end)
        end) +
     "</td>" +
     "</tr>" +
@@ -291,6 +296,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
       <div class="stat-group-label">Projects</div>
       <div class="stat-cells">
         <div class="stat"><div class="stat-value">$TOTAL_PROJECTS</div><div class="stat-label">Total</div></div>
+        <div class="stat critical"><div class="stat-value">$PROJECTS_WITH_FINDINGS</div><div class="stat-label">Findings</div></div>
         <div class="stat"><div class="stat-value">$GEMINI_COUNT</div><div class="stat-label">Gemini Enabled</div></div>
       </div>
     </div>
