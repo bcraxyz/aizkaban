@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="12" fill="#1a1a18"/>
-  <text x="32" y="46" font-size="36" text-anchor="middle" font-family="serif">🔑</text>
+  <!-- Gemini-style star mark in white -->
+  <path d="M32 10 C32 10 26 26 10 32 C26 38 32 54 32 54 C32 54 38 38 54 32 C38 26 32 10 32 10 Z" fill="white"/>
 </svg>
