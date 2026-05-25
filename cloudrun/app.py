@@ -208,15 +208,19 @@ def scan():
         f"--scope=organizations/{ORG_ID}",
         "--asset-types=cloudresourcemanager.googleapis.com/Project",
         "--query=state:ACTIVE",
-        "--format=json(name,displayName)",
+        "--format=json(name,additionalAttributes)",
     ])
     pmap_list = json.loads(raw_pmap) if raw_pmap else []
-    # name format: //cloudresourcemanager.googleapis.com/projects/123456
-    # displayName is the project ID
-    pmap = {
-        p["name"].split("/")[-1]: p.get("displayName", p["name"].split("/")[-1])
-        for p in pmap_list if p.get("name")
-    }
+    # name format: //cloudresourcemanager.googleapis.com/projects/{PROJECT_ID}
+    # additionalAttributes.projectNumber is the numeric ID used in API key asset paths
+    # Build pmap keyed by project number -> project ID
+    pmap = {}
+    for p in pmap_list:
+        project_id = p.get("name", "").split("/")[-1]
+        attrs = p.get("additionalAttributes", {})
+        project_number = str(attrs.get("projectNumber", ""))
+        if project_id and project_number:
+            pmap[project_number] = project_id
     total_projects = len(pmap)
 
     gemini_raw = run_gcloud([
