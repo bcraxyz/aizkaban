@@ -20,17 +20,17 @@ echo ""
 
 # ── Inputs ─────────────────────────────────────────────────────────────────────
 
-read -r -p "GCP Project ID (where Cloud Run will be deployed): " PROJECT_ID
+read -r -p "Google Cloud Project ID (where Cloud Run will be deployed): " PROJECT_ID
 [ -z "$PROJECT_ID" ] && echo "Error: Project ID required." && exit 1
 
-read -r -p "GCP Organization ID (org to scan): " ORG_ID
+read -r -p "Google Cloud Organization ID (org to scan): " ORG_ID
 [ -z "$ORG_ID" ] && echo "Error: Organization ID required." && exit 1
 
 read -r -p "Cloud Run region [us-central1]: " REGION
 REGION="${REGION:-us-central1}"
 
 SERVICE_NAME="aizkaban"
-SA_NAME="aizkaban-scanner"
+SA_NAME="aizkaban-sa"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest"
 
@@ -77,8 +77,7 @@ echo ""
 echo "── Step 4: Binding IAM roles at Organization level ──────────────────────"
 for ROLE in \
   "roles/cloudasset.viewer" \
-  "roles/resourcemanager.organizationViewer" \
-  "roles/serviceusage.serviceUsageViewer"; do
+  "roles/resourcemanager.organizationViewer"; do
   gcloud organizations add-iam-policy-binding "$ORG_ID" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="$ROLE" \
