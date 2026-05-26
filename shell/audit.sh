@@ -115,10 +115,10 @@ FINDINGS=$(echo "$KEYS_JSON" | jq -c   --argjson pmap "$PROJECT_MAP"   --argjson
       expires:         ($d.expireTime // ""),
       pre_gemini:      (($d.createTime // "") < $cutoff and ($d.createTime // "") != ""),
       app_restriction: (
-        if $d.restrictions.browserKeyRestrictions then "Browser"
-        elif $d.restrictions.serverKeyRestrictions then "Server/IP"
-        elif $d.restrictions.androidKeyRestrictions then "Android"
-        elif $d.restrictions.iosKeyRestrictions then "iOS"
+        if $d.restrictions | (. != null and has("browserKeyRestrictions")) then "Browser"
+        elif $d.restrictions | (. != null and has("serverKeyRestrictions")) then "Server/IP"
+        elif $d.restrictions | (. != null and has("androidKeyRestrictions")) then "Android"
+        elif $d.restrictions | (. != null and has("iosKeyRestrictions")) then "iOS"
         else "None"
         end
       ),
