@@ -174,13 +174,13 @@ def classify_key(key_data: dict, gemini_set: set, pmap: dict) -> dict | None:
     created = d.get("createTime", "")
     pre_gemini = bool(created and created < PRE_GEMINI_CUTOFF)
 
-    if restrictions.get("browserKeyRestrictions"):
+    if restrictions.get("browserKeyRestrictions") is not None:
         app_restriction = "Browser"
-    elif restrictions.get("serverKeyRestrictions"):
+    elif restrictions.get("serverKeyRestrictions") is not None:
         app_restriction = "Server/IP"
-    elif restrictions.get("androidKeyRestrictions"):
+    elif restrictions.get("androidKeyRestrictions") is not None:
         app_restriction = "Android"
-    elif restrictions.get("iosKeyRestrictions"):
+    elif restrictions.get("iosKeyRestrictions") is not None:
         app_restriction = "iOS"
     else:
         app_restriction = "None"
