@@ -7,7 +7,7 @@
 #   - gcloud CLI authenticated as a user with:
 #       roles/owner or roles/editor on the deploy project
 #       roles/resourcemanager.organizationAdmin (to bind org-level IAM in Step 4)
-#   - Docker not required (uses Cloud Build)
+#   - Docker installed locally (preferred) or Cloud Build access on the deploy project
 # ==============================================================================
 
 set -e
@@ -82,17 +82,26 @@ for ROLE in \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="$ROLE" \
     --condition=None \
-    --format="value(bindings.role)" \
-    --quiet
+    --quiet > /dev/null
   echo "✅ Bound: $ROLE"
 done
 
 # ── Step 5: Build and push Docker image ───────────────────────────────────────
 echo ""
 echo "── Step 5: Building and pushing Docker image ────────────────────────────"
-gcloud auth configure-docker --quiet
-docker build -t gcr.io/YOUR_PROJECT_ID/aizkaban:latest ./cloudrun
-docker push gcr.io/YOUR_PROJECT_ID/aizkaban:latest
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v docker &>/dev/null; then
+  echo "   Using local Docker..."
+  gcloud auth configure-docker --quiet 2>/dev/null
+  docker build -t "$IMAGE" "$SCRIPT_DIR"
+  docker push "$IMAGE"
+else
+  echo "   Docker not found, using Cloud Build..."
+  gcloud builds submit "$SCRIPT_DIR" \
+    --tag "$IMAGE" \
+    --project "$PROJECT_ID"
+fi
+echo "✅ Image pushed: $IMAGE"
 
 # ── Step 6: Deploy Cloud Run service ──────────────────────────────────────────
 echo ""
