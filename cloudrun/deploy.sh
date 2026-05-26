@@ -14,7 +14,7 @@ set -e
 
 echo ""
 echo "╔══════════════════════════════════════╗"
-echo "║      aizkaban — Deploy Script        ║"
+echo "║      AIzkaban — Deploy Script        ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
@@ -82,6 +82,7 @@ for ROLE in \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="$ROLE" \
     --condition=None \
+    --format="value(bindings.role)" \
     --quiet
   echo "✅ Bound: $ROLE"
 done
@@ -89,11 +90,9 @@ done
 # ── Step 5: Build and push Docker image ───────────────────────────────────────
 echo ""
 echo "── Step 5: Building and pushing Docker image ────────────────────────────"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-gcloud builds submit "$SCRIPT_DIR" \
-  --tag "$IMAGE" \
-  --project "$PROJECT_ID"
-echo "✅ Image pushed: $IMAGE"
+gcloud auth configure-docker --quiet
+docker build -t gcr.io/YOUR_PROJECT_ID/aizkaban:latest ./cloudrun
+docker push gcr.io/YOUR_PROJECT_ID/aizkaban:latest
 
 # ── Step 6: Deploy Cloud Run service ──────────────────────────────────────────
 echo ""
@@ -149,7 +148,7 @@ fi
 # ── Done ───────────────────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  ✅ aizkaban deployed                                        ║"
+echo "║  ✅ AIzkaban deployed                                        ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
 printf  "║  URL : %-54s║\n" "$SERVICE_URL"
 printf  "║  Org : %-54s║\n" "$ORG_ID"
